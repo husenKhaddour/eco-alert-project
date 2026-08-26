@@ -162,25 +162,54 @@ export const verifyCommunityReport = functions.firestore
         const reportLat = newReport.coordinates.latitude;
         const reportLng = newReport.coordinates.longitude;
 
+        // جلب جميع البلاغات المشابهة المعلقة
         const similarReports = await db.collection("community_reports")
             .where("type", "==", newReport.type)
             .where("status", "==", "pending_verification")
             .get();
 
-        let totalTrustPoints = 0;
+        let relatedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+
+        // التحقق من المسافة لجميع البلاغات
         similarReports.forEach((doc) => {
             const data = doc.data();
             const dist = getDistanceFromLatLonInKm(reportLat, reportLng, data.coordinates.latitude, data.coordinates.longitude);
-            if (dist <= 5.0) totalTrustPoints += 1;
+            if (dist <= 5.0) {
+                relatedDocs.push(doc);
+            }
         });
 
-        if (totalTrustPoints >= 3) {
-            await snap.ref.update({ status: 'verified' });
+        // إذا وصل العدد إلى 3 بلاغات متقاربة
+        if (relatedDocs.length >= 3) {
+            const batch = db.batch();
+            
+            // 1. تحديث حالة جميع البلاغات الثلاثة إلى موثقة
+            relatedDocs.forEach(doc => {
+                batch.update(doc.ref, { status: 'verified' });
+            });
+            
+            // 2. إضافة نقاط للمستخدم الذي أرسل البلاغ الأخير
             if (reporterId !== 'anonymous') {
-                await db.collection("users").doc(reporterId).update({
+                batch.update(db.collection("users").doc(reporterId), {
                     trustScore: admin.firestore.FieldValue.increment(10)
                 });
             }
+
+            // 3. إنشاء تنبيه بيئي رسمي ليظهر لجميع المستخدمين في التطبيق
+            const officialHazardId = `community_verified_${context.params.reportId}`;
+            const hazardRef = db.collection("environmental_hazards").doc(officialHazardId);
+            batch.set(hazardRef, {
+                title: `تنبيه مجتمعي موثق: ${newReport.type}`,
+                type: newReport.type,
+                severity: newReport.severity,
+                location_name: "موقع تم تحديده من قبل المجتمع",
+                coordinates: newReport.coordinates,
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                source: "بلاغ مجتمعي"
+            });
+            
+            await batch.commit();
+            console.log("تم توثيق البلاغات بنجاح وتحويلها إلى تنبيه عام.");
         }
         return null;
     });
