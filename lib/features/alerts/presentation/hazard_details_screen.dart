@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../chat/presentation/user_chat_screen.dart'; 
 
 class HazardDetailsScreen extends StatefulWidget {
@@ -48,6 +49,11 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
     if (severity == 'medium') severityColor = Colors.orange;
 
     List<String> instructions = _getSafetyInstructions(type);
+
+    // التحقق من وجود إحداثيات
+    final hasCoordinates = widget.alert['coordinates'] != null && 
+                           widget.alert['coordinates']['latitude'] != null && 
+                           widget.alert['coordinates']['longitude'] != null;
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -103,12 +109,46 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
             )).toList(),
 
             const SizedBox(height: 30),
+
+            // --- زر عرض الموقع على الخريطة ---
+            if (hasCoordinates)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.green[800],
+                      side: BorderSide(color: Colors.green[800]!, width: 2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.map, size: 28),
+                    label: const Text('عرض الموقع الدقيق على الخريطة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    onPressed: () async {
+                      final lat = widget.alert['coordinates']['latitude'];
+                      final lng = widget.alert['coordinates']['longitude'];
+                      final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+                      
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      } else {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تعذر فتح الخرائط على جهازك.'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ),
             
             const Divider(),
             const Text('🤖 طلب المساعدة الفورية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 15),
             
-            // الزر الجديد الذي يربط المستخدم بمحادثة الدعم الفني مباشرة
+            // الزر الذي يربط المستخدم بمحادثة الدعم الفني مباشرة
             SizedBox(
               width: double.infinity,
               height: 55,
