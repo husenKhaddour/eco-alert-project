@@ -159,10 +159,6 @@ export const verifyCommunityReport = functions.firestore
         if (newReport.status !== 'pending_verification') return null;
 
         const reporterId = newReport.userId || 'anonymous';
-        const reportLat = newReport.coordinates.latitude;
-        const reportLng = newReport.coordinates.longitude;
-
-        // جلب جميع البلاغات المشابهة المعلقة
         const similarReports = await db.collection("community_reports")
             .where("type", "==", newReport.type)
             .where("status", "==", "pending_verification")
@@ -170,35 +166,29 @@ export const verifyCommunityReport = functions.firestore
 
         let relatedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
-        // التحقق من المسافة لجميع البلاغات
         similarReports.forEach((doc) => {
             const data = doc.data();
-            const dist = getDistanceFromLatLonInKm(reportLat, reportLng, data.coordinates.latitude, data.coordinates.longitude);
-            if (dist <= 5.0) {
-                relatedDocs.push(doc);
-            }
+            const dist = getDistanceFromLatLonInKm(newReport.coordinates.latitude, newReport.coordinates.longitude, data.coordinates.latitude, data.coordinates.longitude);
+            if (dist <= 5.0) relatedDocs.push(doc);
         });
 
-        // إذا وصل العدد إلى 3 بلاغات متقاربة
-        if (relatedDocs.length >= 3) {
+        // 👈 التعديل هنا: التوثيق يحدث مرة واحدة فقط عندما يصل العدد لـ 3 بالضبط
+        if (relatedDocs.length === 3) {
             const batch = db.batch();
             
-            // 1. تحديث حالة جميع البلاغات الثلاثة إلى موثقة
+            // 👈 التعديل هنا: إخفاء البلاغات الفردية بتغيير حالتها إلى merged
             relatedDocs.forEach(doc => {
-                batch.update(doc.ref, { status: 'verified' });
+                batch.update(doc.ref, { status: 'merged' });
             });
             
-            // 2. إضافة نقاط للمستخدم الذي أرسل البلاغ الأخير
             if (reporterId !== 'anonymous') {
                 batch.update(db.collection("users").doc(reporterId), {
                     trustScore: admin.firestore.FieldValue.increment(10)
                 });
             }
 
-            // 3. إنشاء تنبيه بيئي رسمي ليظهر لجميع المستخدمين في التطبيق
             const officialHazardId = `community_verified_${context.params.reportId}`;
-            const hazardRef = db.collection("environmental_hazards").doc(officialHazardId);
-            batch.set(hazardRef, {
+            batch.set(db.collection("environmental_hazards").doc(officialHazardId), {
                 title: `تنبيه مجتمعي موثق: ${newReport.type}`,
                 type: newReport.type,
                 severity: newReport.severity,
@@ -209,7 +199,6 @@ export const verifyCommunityReport = functions.firestore
             });
             
             await batch.commit();
-            console.log("تم توثيق البلاغات بنجاح وتحويلها إلى تنبيه عام.");
         }
         return null;
     });
