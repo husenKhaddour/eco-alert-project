@@ -172,11 +172,11 @@ export const verifyCommunityReport = functions.firestore
             if (dist <= 5.0) relatedDocs.push(doc);
         });
 
-        // 👈 التعديل هنا: التوثيق يحدث مرة واحدة فقط عندما يصل العدد لـ 3 بالضبط
+        // التوثيق يحدث مرة واحدة فقط عندما يصل العدد لـ 3 بالضبط
         if (relatedDocs.length === 3) {
             const batch = db.batch();
             
-            // 👈 التعديل هنا: إخفاء البلاغات الفردية بتغيير حالتها إلى merged
+            // إخفاء البلاغات الفردية بتغيير حالتها إلى merged
             relatedDocs.forEach(doc => {
                 batch.update(doc.ref, { status: 'merged' });
             });
@@ -292,5 +292,93 @@ export const sendHazardNotification = functions.firestore
             console.error("خطأ في توجيه الإشعارات الجغرافية:", error);
         }
         
+        return null;
+    });
+
+// ----------------------------------------------------------------------
+// 6. وظيفة إرسال إشعار للمستخدم عند قبول أو رفض بلاغه
+// ----------------------------------------------------------------------
+export const notifyReportStatusChange = functions.firestore
+    .document("community_reports/{reportId}")
+    .onUpdate(async (change, context) => {
+        const newValue = change.after.data();
+        const previousValue = change.before.data();
+
+        // التحقق مما إذا كانت الحالة قد تغيرت فعلاً
+        if (newValue.status === previousValue.status) return null;
+
+        const userId = newValue.userId;
+        // إذا كان البلاغ من مستخدم مجهول، لا ترسل إشعاراً
+        if (!userId || userId === 'anonymous') return null;
+
+        let title = "";
+        let body = "";
+
+        if (newValue.status === 'verified') {
+            title = "✅ تم توثيق بلاغك!";
+            body = `شكراً لك! تم التأكد من صحة بلاغك بخصوص (${newValue.type}) وإضافة نقاط الثقة لحسابك.`;
+        } else if (newValue.status === 'rejected') {
+            title = "❌ تم رفض بلاغك";
+            body = `عذراً، تم رفض بلاغك بخصوص (${newValue.type}). يرجى تحري الدقة في المرات القادمة.`;
+        } else {
+            return null; // تجاهل أي حالات أخرى
+        }
+
+        try {
+            // جلب التوكن الخاص بالمستخدم من مجموعة users_locations
+            const userLocDoc = await db.collection("users_locations").doc(userId).get();
+            if (!userLocDoc.exists) return null;
+            
+            const fcmToken = userLocDoc.data()?.fcmToken;
+
+            if (fcmToken) {
+                await admin.messaging().send({
+                    token: fcmToken,
+                    notification: { title, body }
+                });
+                console.log(`تم إرسال إشعار حالة البلاغ للمستخدم: ${userId}`);
+            }
+        } catch (error) {
+            console.error("خطأ في إرسال إشعار تحديث البلاغ:", error);
+        }
+
+        return null;
+    });
+
+// ----------------------------------------------------------------------
+// 7. وظيفة إرسال إشعار للمستخدم عند وصول رسالة من الدعم الفني
+// ----------------------------------------------------------------------
+export const notifyChatMessage = functions.firestore
+    // تأكد من أن هذا المسار يطابق هيكل قاعدة البيانات الخاص بالمحادثات لديك
+    .document("chats/{chatId}/messages/{messageId}")
+    .onCreate(async (snap, context) => {
+        const messageData = snap.data();
+        
+        // إذا كان المرسل هو المستخدم نفسه، لا ترسل إشعاراً لنفسه
+        if (messageData.senderId !== 'admin') return null; 
+
+        // استخراج معرف المستخدم من مسار المستند
+        const userId = context.params.chatId;
+
+        try {
+            const userLocDoc = await db.collection("users_locations").doc(userId).get();
+            if (!userLocDoc.exists) return null;
+            
+            const fcmToken = userLocDoc.data()?.fcmToken;
+
+            if (fcmToken) {
+                await admin.messaging().send({
+                    token: fcmToken,
+                    notification: {
+                        title: "💬 رسالة جديدة من الدعم الفني",
+                        body: messageData.text || "لديك تحديث جديد بخصوص استفسارك."
+                    }
+                });
+                console.log(`تم إرسال إشعار الرسالة للمستخدم: ${userId}`);
+            }
+        } catch (error) {
+            console.error("خطأ في إرسال إشعار المحادثة:", error);
+        }
+
         return null;
     });
