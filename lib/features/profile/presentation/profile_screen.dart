@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:geolocator/geolocator.dart'; // تمت إضافة المكتبة لجلب الموقع الفعلي
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -9,26 +11,26 @@ class ProfileScreen extends StatelessWidget {
   // دالة لإضافة موقع مفضل جديد لقاعدة بيانات المستخدم
   Future<void> _addFavoriteLocation(BuildContext context, String uid) async {
     try {
-      // التحقق من صلاحيات الموقع قبل الجلب
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
+      // 1. فتح شاشة الخريطة التفاعلية لاختيار الموقع
+      final LatLng? pickedLocation = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MapLocationPickerScreen()),
+      );
 
-      // جلب الإحداثيات الحالية
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      String locationName = '';
+      // إذا تراجع المستخدم ولم يختر موقعاً
+      if (pickedLocation == null) return;
 
       if (!context.mounted) return;
 
-      // إظهار نافذة منبثقة لإدخال اسم الموقع
+      String locationName = '';
+
+      // 2. إظهار نافذة منبثقة لإدخال اسم الموقع بعد اختياره من الخريطة
       await showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('إضافة موقع مفضل 📍'),
           content: TextField(
-            decoration: const InputDecoration(hintText: "مثال: المنزل، العمل، مدرسة الأطفال"),
+            decoration: const InputDecoration(hintText: "مثال: المنزل، العمل، مزرعة العائلة"),
             onChanged: (val) => locationName = val,
           ),
           actions: [
@@ -39,13 +41,13 @@ class ProfileScreen extends StatelessWidget {
                 if (locationName.trim().isEmpty) return;
                 Navigator.pop(context);
                 
-                // تحديث قائمة المواقع في Firestore باستخدام arrayUnion لمنع التكرار
+                // 3. تحديث قائمة المواقع في Firestore
                 await FirebaseFirestore.instance.collection('users').doc(uid).update({
                   'savedLocations': FieldValue.arrayUnion([
                     {
                       'name': locationName.trim(),
-                      'latitude': position.latitude,
-                      'longitude': position.longitude,
+                      'latitude': pickedLocation.latitude,
+                      'longitude': pickedLocation.longitude,
                     }
                   ])
                 });
@@ -80,7 +82,7 @@ class ProfileScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.add_location_alt, color: Colors.green),
               onPressed: () => _addFavoriteLocation(context, uid),
-              tooltip: 'إضافة موقعك الحالي للمفضلة',
+              tooltip: 'إضافة موقع جديد من الخريطة',
             ),
           ],
         ),
@@ -290,6 +292,126 @@ class ProfileScreen extends StatelessWidget {
       label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
       backgroundColor: color.withOpacity(0.2),
       side: BorderSide(color: color),
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// شاشة جديدة: خريطة لاختيار الموقع المفضل بالنقر
+// ---------------------------------------------------------
+class MapLocationPickerScreen extends StatefulWidget {
+  const MapLocationPickerScreen({Key? key}) : super(key: key);
+
+  @override
+  State<MapLocationPickerScreen> createState() => _MapLocationPickerScreenState();
+}
+
+class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
+  LatLng? _selectedLocation;
+  final MapController _mapController = MapController();
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _moveToCurrentLocation();
+  }
+
+  Future<void> _moveToCurrentLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
+        final currentLatLng = LatLng(position.latitude, position.longitude);
+        _mapController.move(currentLatLng, 13.0);
+        setState(() {
+          _selectedLocation = currentLatLng;
+        });
+      }
+    } catch (e) {
+      debugPrint("تعذر الوصول للموقع الحالي: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('حدد الموقع على الخريطة'),
+        backgroundColor: Colors.green[700],
+        actions: [
+          if (_selectedLocation != null)
+            IconButton(
+              icon: const Icon(Icons.check_circle, size: 30, color: Colors.white),
+              tooltip: 'تأكيد الموقع',
+              onPressed: () {
+                // إرجاع الإحداثيات المختارة للصفحة السابقة
+                Navigator.pop(context, _selectedLocation);
+              },
+            ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: const LatLng(34.8, 38.9), // موقع افتراضي (سوريا)
+              initialZoom: 6.0,
+              onTap: (tapPosition, point) {
+                setState(() {
+                  _selectedLocation = point; // تحديث النقطة عند نقر المستخدم
+                });
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              ),
+              if (_selectedLocation != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _selectedLocation!,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(Icons.location_pin, color: Colors.red, size: 50),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          if (_isLoadingLocation)
+            const Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 15),
+                      Text("جاري تحديد موقعك الحالي..."),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.white,
+        onPressed: _moveToCurrentLocation,
+        child: const Icon(Icons.my_location, color: Colors.blue),
+      ),
     );
   }
 }
