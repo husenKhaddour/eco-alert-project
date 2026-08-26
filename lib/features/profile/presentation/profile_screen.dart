@@ -375,6 +375,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.ecoalert.eco_alert', 
               ),
               if (_selectedLocation != null)
                 MarkerLayer(
