@@ -4,29 +4,54 @@ import 'package:intl/intl.dart' as intl;
 import 'package:geocoding/geocoding.dart'; // إضافة مكتبة تحويل الإحداثيات إلى عناوين
 import 'admin_chats_screen.dart'; // استدعاء شاشة محادثات الدعم الفني
 
-class AdminDashboardScreen extends StatelessWidget {
+// تم تحويل الشاشة إلى StatefulWidget لدعم ميزة التحديث
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
 
   @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4, // تم التعديل من 3 إلى 4 لإضافة تبويب المحادثات والدعم
+      length: 4, 
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: AppBar(
           title: const Text('لوحة تحكم الإدارة 🛡️', style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.indigo[900], 
           foregroundColor: Colors.white,
+          actions: [
+            // 👇 إضافة زر التحديث الخاص بالأدمن
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              tooltip: 'تحديث الإحصائيات والبيانات',
+              onPressed: () {
+                // إعادة بناء الشاشة لتحديث جلب البيانات من فايربيز
+                setState(() {});
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('تم تحديث بيانات لوحة التحكم بنجاح ✅'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+          ],
           bottom: const TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white54,
             indicatorColor: Colors.orange,
-            isScrollable: true, // لجعل التبويبات الـ 4 تتطابق بسلاسة مع الشاشة
+            isScrollable: true, 
             tabs: [
               Tab(icon: Icon(Icons.analytics), text: 'نظرة عامة'),
               Tab(icon: Icon(Icons.pending_actions), text: 'البلاغات المعلقة'),
               Tab(icon: Icon(Icons.people), text: 'إدارة المستخدمين'),
-              Tab(icon: Icon(Icons.support_agent), text: 'الدعم والمحادثات'), // التبويب الجديد
+              Tab(icon: Icon(Icons.support_agent), text: 'الدعم والمحادثات'), 
             ],
           ),
         ),
@@ -205,7 +230,6 @@ class _PendingReportsTab extends StatelessWidget {
 
   Future<void> _approveReport(BuildContext context, String docId, Map<String, dynamic> data) async {
     try {
-      // إظهار رسالة للمستخدم أثناء محاولة جلب الإحداثيات
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري جلب الموقع الحقيقي وتوثيق البلاغ... ⏳')));
       }
@@ -213,18 +237,15 @@ class _PendingReportsTab extends StatelessWidget {
       String actualLocationName = 'موقع محدد من قبل مستخدم';
       final geo = data['coordinates'];
 
-      // محاولة تحويل الإحداثيات إلى اسم مدينة أو شارع حقيقي
       if (geo != null && geo['latitude'] != null && geo['longitude'] != null) {
         try {
           List<Placemark> placemarks = await placemarkFromCoordinates(geo['latitude'], geo['longitude']);
           if (placemarks.isNotEmpty) {
             Placemark place = placemarks.first;
-            // دمج الحقول المتاحة لتشكيل عنوان واضح (المدينة، الحي، الشارع)
             actualLocationName = [place.locality, place.subLocality, place.street]
                 .where((e) => e != null && e.isNotEmpty)
                 .join('، ');
             
-            // في حال عدم توفر بيانات دقيقة للمنطقة، استخدم اسم البلد كبديل أخير
             if (actualLocationName.isEmpty) actualLocationName = place.country ?? 'موقع غير معروف';
           }
         } catch (e) {
@@ -241,7 +262,7 @@ class _PendingReportsTab extends StatelessWidget {
         'title': 'خطر موثق من الإدارة: ${data['type']}',
         'type': data['type'],
         'severity': data['severity'],
-        'location_name': actualLocationName, // تم استبدال النص الثابت بالموقع الحقيقي
+        'location_name': actualLocationName, 
         'coordinates': data['coordinates'],
         'timestamp': FieldValue.serverTimestamp(),
         'source': 'Admin Verified',
@@ -255,7 +276,7 @@ class _PendingReportsTab extends StatelessWidget {
 
       await batch.commit();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar(); // إخفاء رسالة التحميل
+        ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم توثيق البلاغ ونشره بالموقع الحقيقي بنجاح ✅'), backgroundColor: Colors.green));
       }
     } catch (e) {
@@ -282,19 +303,16 @@ class _PendingReportsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      // تم إزالة orderBy من هنا لتجنب مشاكل الفهارس (Indexes)
       stream: FirebaseFirestore.instance.collection('community_reports').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد بلاغات معلقة حالياً ✅', style: TextStyle(fontSize: 18)));
 
-        // 1. فلترة البلاغات المعلقة فقط
         final pendingDocs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           return data['status'] == 'pending_verification';
         }).toList();
 
-        // 2. ترتيب البلاغات برمجياً (الأحدث أولاً) لتجنب أخطاء الفايربيز
         pendingDocs.sort((a, b) {
           final dataA = a.data() as Map<String, dynamic>;
           final dataB = b.data() as Map<String, dynamic>;
