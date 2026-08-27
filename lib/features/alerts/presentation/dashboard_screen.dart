@@ -274,10 +274,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserChatScreen())),
             ),
 
-          if (!_isAdmin)
             IconButton(icon: const Icon(Icons.refresh, color: Colors.white), tooltip: 'تحديث الكوارث', onPressed: _syncOpenData),
             
-          // 👈 تم إضافة زر الإشعارات هنا
           if (!_isAdmin)
             IconButton(
               icon: const Icon(Icons.notifications_active, color: Colors.white), 
