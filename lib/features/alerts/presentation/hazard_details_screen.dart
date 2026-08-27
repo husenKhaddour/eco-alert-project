@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:intl/intl.dart' as intl; 
 import '../../chat/presentation/user_chat_screen.dart'; 
 
 class HazardDetailsScreen extends StatefulWidget {
@@ -44,6 +46,23 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
     final String location = widget.alert['location_name'] ?? 'موقع غير معروف';
     final String source = widget.alert['source'] ?? 'غير محدد';
     
+    // 👇 استخراج ومعالجة التاريخ والوقت
+    String timeString = 'غير متوفر';
+    if (widget.alert['timestamp'] != null) {
+      try {
+        DateTime dt;
+        // التحقق مما إذا كان الوقت قادماً من Firebase مباشرة أو من التخزين المحلي
+        if (widget.alert['timestamp'] is Timestamp) {
+          dt = (widget.alert['timestamp'] as Timestamp).toDate();
+        } else {
+          dt = DateTime.parse(widget.alert['timestamp'].toString());
+        }
+        timeString = intl.DateFormat('yyyy-MM-dd – kk:mm').format(dt);
+      } catch (e) {
+        timeString = 'تنسيق غير معروف';
+      }
+    }
+
     Color severityColor = Colors.green;
     if (severity == 'high') severityColor = Colors.red;
     if (severity == 'medium') severityColor = Colors.orange;
@@ -84,6 +103,9 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
                     ),
                     const Divider(height: 30),
                     _buildInfoRow(Icons.category, 'النوع:', type),
+                    const SizedBox(height: 10),
+                    // 👇 إضافة صف عرض الوقت هنا
+                    _buildInfoRow(Icons.access_time, 'الوقت:', timeString),
                     const SizedBox(height: 10),
                     _buildInfoRow(Icons.location_on, 'الموقع:', location),
                     const SizedBox(height: 10),
