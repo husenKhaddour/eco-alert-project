@@ -70,7 +70,6 @@ export const fetchUSGSEarthquakes = functions.pubsub.schedule("every 60 minutes"
 // ----------------------------------------------------------------------
 export const fetchOpenAQData = functions.pubsub.schedule("every 2 hours").onRun(async (context: functions.EventContext) => {
     try {
-        // جلب المناطق التي تتجاوز فيها نسبة التلوث الحدود الآمنة (مثال: pm2.5 أعلى من 50)
         const url = "https://api.openaq.org/v2/measurements?parameter=pm25&value_from=50&limit=50";
         const response = await axios.get(url);
         
@@ -81,11 +80,10 @@ export const fetchOpenAQData = functions.pubsub.schedule("every 2 hours").onRun(
         const hazardsRef = db.collection("environmental_hazards");
 
         for (const record of results) {
-            // توليد معرف فريد يعتمد على الموقع والزمن
             const hazardId = `openaq_${record.locationId}_${new Date(record.date.utc).getTime()}`;
             
             let severity = "medium";
-            if (record.value >= 150) severity = "high"; // تلوث خطير جداً
+            if (record.value >= 150) severity = "high";
 
             const hazardData = {
                 title: `تلوث هواء شديد (PM2.5: ${record.value})`,
@@ -113,7 +111,6 @@ export const fetchOpenAQData = functions.pubsub.schedule("every 2 hours").onRun(
 // ----------------------------------------------------------------------
 export const fetchWeatherAlerts = functions.pubsub.schedule("every 3 hours").onRun(async (context: functions.EventContext) => {
     try {
-        // تنويه: استبدل YOUR_OPENWEATHER_API_KEY بالمفتاح الفعلي الخاص بك
         const API_KEY = "YOUR_OPENWEATHER_API_KEY"; 
         const url = `https://api.openweathermap.org/data/2.5/alerts?lat=34.8&lon=38.9&appid=${API_KEY}`;
         const response = await axios.get(url);
@@ -129,10 +126,10 @@ export const fetchWeatherAlerts = functions.pubsub.schedule("every 3 hours").onR
             
             const hazardData = {
                 title: alert.event,
-                type: "فيضان", // أو أي تصنيف ديناميكي يعتمد على طبيعة التنبيه
+                type: "فيضان",
                 severity: "high",
                 location_name: "تنبيه جوي إقليمي",
-                coordinates: { latitude: 34.8, longitude: 38.9 }, // الإحداثيات المستخدمة في الطلب
+                coordinates: { latitude: 34.8, longitude: 38.9 },
                 timestamp: admin.firestore.Timestamp.fromMillis(alert.start * 1000),
                 source: "OpenWeatherMap",
                 details: alert.description
@@ -172,11 +169,9 @@ export const verifyCommunityReport = functions.firestore
             if (dist <= 5.0) relatedDocs.push(doc);
         });
 
-        // التوثيق يحدث مرة واحدة فقط عندما يصل العدد لـ 3 بالضبط
         if (relatedDocs.length === 3) {
             const batch = db.batch();
             
-            // إخفاء البلاغات الفردية بتغيير حالتها إلى merged
             relatedDocs.forEach(doc => {
                 batch.update(doc.ref, { status: 'merged' });
             });
@@ -211,7 +206,6 @@ export const sendHazardNotification = functions.firestore
     .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
         const newHazard = snap.data();
         
-        // تجاهل المخاطر المنخفضة لعدم إزعاج الناس
         if (newHazard.severity === "low") return null;
 
         const hazardLat = newHazard.coordinates.latitude;
@@ -219,12 +213,9 @@ export const sendHazardNotification = functions.firestore
         const tokensToSend: string[] = [];
 
         try {
-            // جلب مواقع المستخدمين الحالية من مجموعة users_locations
             const locationsSnapshot = await db.collection("users_locations").get();
-            // جلب بيانات المستخدمين لمعرفة المواقع المفضلة المحفوظة savedLocations
             const usersSnapshot = await db.collection("users").get();
             
-            // إنشاء قاموس (Map) لبيانات المستخدمين لتسريع البحث
             const usersMap = new Map();
             usersSnapshot.forEach(doc => {
                 usersMap.set(doc.id, doc.data());
@@ -240,16 +231,14 @@ export const sendHazardNotification = functions.firestore
 
                 let isNear = false;
 
-                // 1. فحص القرب من الموقع الحالي للمستخدم (GPS)
                 if (locData.coordinates && locData.coordinates.latitude) {
                     const dist = getDistanceFromLatLonInKm(
                         hazardLat, hazardLng, 
                         locData.coordinates.latitude, locData.coordinates.longitude
                     );
-                    if (dist <= 50.0) isNear = true; // نطاق الخطر 50 كم
+                    if (dist <= 50.0) isNear = true; 
                 }
 
-                // 2. فحص القرب من المواقع المفضلة المحفوظة (المنزل، العمل..) إذا لم يكن قريباً من موقعه الحالي
                 if (!isNear && userData && userData.savedLocations) {
                     for (const savedLoc of userData.savedLocations) {
                         const dist = getDistanceFromLatLonInKm(
@@ -263,13 +252,11 @@ export const sendHazardNotification = functions.firestore
                     }
                 }
 
-                // إذا كان المستخدم قريباً (حالياً أو عبر المفضلة)، أضف جهاز التوكن الخاص به
                 if (isNear) {
                     tokensToSend.push(fcmToken);
                 }
             });
 
-            // إرسال الإشعار فقط للأجهزة التي تقع ضمن نطاق الخطر
             if (tokensToSend.length > 0) {
                 const payload = {
                     notification: { 
@@ -278,7 +265,6 @@ export const sendHazardNotification = functions.firestore
                     }
                 };
 
-                // إرسال رسائل متعددة (Multicast) للأجهزة المحددة
                 const response = await admin.messaging().sendMulticast({
                     tokens: tokensToSend,
                     notification: payload.notification
@@ -304,11 +290,9 @@ export const notifyReportStatusChange = functions.firestore
         const newValue = change.after.data();
         const previousValue = change.before.data();
 
-        // التحقق مما إذا كانت الحالة قد تغيرت فعلاً
         if (newValue.status === previousValue.status) return null;
 
         const userId = newValue.userId;
-        // إذا كان البلاغ من مستخدم مجهول، لا ترسل إشعاراً
         if (!userId || userId === 'anonymous') return null;
 
         let title = "";
@@ -321,11 +305,10 @@ export const notifyReportStatusChange = functions.firestore
             title = "❌ تم رفض بلاغك";
             body = `عذراً، تم رفض بلاغك بخصوص (${newValue.type}). يرجى تحري الدقة في المرات القادمة.`;
         } else {
-            return null; // تجاهل أي حالات أخرى
+            return null; 
         }
 
         try {
-            // جلب التوكن الخاص بالمستخدم من مجموعة users_locations
             const userLocDoc = await db.collection("users_locations").doc(userId).get();
             if (!userLocDoc.exists) return null;
             
@@ -349,16 +332,15 @@ export const notifyReportStatusChange = functions.firestore
 // 7. وظيفة إرسال إشعار للمستخدم عند وصول رسالة من الدعم الفني
 // ----------------------------------------------------------------------
 export const notifyChatMessage = functions.firestore
-    // تأكد من أن هذا المسار يطابق هيكل قاعدة البيانات الخاص بالمحادثات لديك
     .document("chats/{chatId}/messages/{messageId}")
     .onCreate(async (snap, context) => {
         const messageData = snap.data();
         
-        // إذا كان المرسل هو المستخدم نفسه، لا ترسل إشعاراً لنفسه
-        if (messageData.senderId !== 'admin') return null; 
-
         // استخراج معرف المستخدم من مسار المستند
         const userId = context.params.chatId;
+
+        // 👈 التعديل هنا: التأكد من أن مرسل الرسالة ليس هو صاحب المحادثة نفسه
+        if (messageData.senderId === userId) return null; 
 
         try {
             const userLocDoc = await db.collection("users_locations").doc(userId).get();
