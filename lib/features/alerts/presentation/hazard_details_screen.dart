@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:intl/intl.dart' as intl; 
+import 'package:flutter_map/flutter_map.dart'; // 👈 مكتبة الخريطة الداخلية
+import 'package:latlong2/latlong.dart'; // 👈 مكتبة الإحداثيات
 import '../../chat/presentation/user_chat_screen.dart'; 
 
 class HazardDetailsScreen extends StatefulWidget {
@@ -104,7 +105,6 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
                     const Divider(height: 30),
                     _buildInfoRow(Icons.category, 'النوع:', type),
                     const SizedBox(height: 10),
-                    // 👇 إضافة صف عرض الوقت هنا
                     _buildInfoRow(Icons.access_time, 'الوقت:', timeString),
                     const SizedBox(height: 10),
                     _buildInfoRow(Icons.location_on, 'الموقع:', location),
@@ -132,7 +132,7 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
 
             const SizedBox(height: 30),
 
-            // --- زر عرض الموقع على الخريطة ---
+            // --- زر عرض الموقع على الخريطة الداخلية ---
             if (hasCoordinates)
               Padding(
                 padding: const EdgeInsets.only(bottom: 20.0),
@@ -147,20 +147,23 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
                     ),
                     icon: const Icon(Icons.map, size: 28),
                     label: const Text('عرض الموقع الدقيق على الخريطة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    onPressed: () async {
+                    onPressed: () {
                       final lat = widget.alert['coordinates']['latitude'];
                       final lng = widget.alert['coordinates']['longitude'];
-                      final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-                      
-                      if (await canLaunchUrl(url)) {
-                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                      } else {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تعذر فتح الخرائط على جهازك.'), backgroundColor: Colors.red),
-                          );
-                        }
-                      }
+                      final hazardTitle = widget.alert['title'] ?? 'موقع الخطر';
+
+                      // فتح الخريطة الداخلية بدلاً من التطبيق الخارجي
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HazardInternalMapScreen(
+                            latitude: lat,
+                            longitude: lng,
+                            title: hazardTitle,
+                            severityColor: severityColor,
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ),
@@ -170,7 +173,6 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
             const Text('🤖 طلب المساعدة الفورية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 15),
             
-            // الزر الذي يربط المستخدم بمحادثة الدعم الفني مباشرة
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -215,6 +217,64 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
         Text('$label ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
         Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// شاشة الخريطة الداخلية لعرض موقع الخطر
+// ---------------------------------------------------------
+class HazardInternalMapScreen extends StatelessWidget {
+  final double latitude;
+  final double longitude;
+  final String title;
+  final Color severityColor;
+
+  const HazardInternalMapScreen({
+    Key? key,
+    required this.latitude,
+    required this.longitude,
+    required this.title,
+    required this.severityColor,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final location = LatLng(latitude, longitude);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: severityColor,
+        foregroundColor: Colors.white,
+      ),
+      body: FlutterMap(
+        options: MapOptions(
+          initialCenter: location,
+          initialZoom: 14.0, // تقريب مناسب لرؤية المنطقة
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.ecoalert.eco_alert', // لمنع حظر الخريطة
+          ),
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: location,
+                width: 60,
+                height: 60,
+                child: const Column(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 40),
+                    Icon(Icons.location_on, color: Colors.red, size: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
