@@ -15,7 +15,89 @@ import '../../profile/presentation/profile_screen.dart';
 import '../../admin/presentation/admin_dashboard_screen.dart'; 
 import '../../auth/presentation/login_screen.dart';
 import '../../chat/presentation/user_chat_screen.dart';
-import 'notifications_screen.dart'; // 👈 استيراد شاشة الإشعارات الجديدة
+import 'notifications_screen.dart'; 
+
+// ============================================================================
+// 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback)
+// ============================================================================
+double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  const R = 6371.0; 
+  final dLat = (lat2 - lat1) * (pi / 180.0);
+  final dLon = (lon2 - lon1) * (pi / 180.0);
+  final a = sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1 * (pi / 180.0)) * cos(lat2 * (pi / 180.0)) *
+      sin(dLon / 2) * sin(dLon / 2);
+  final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  return R * c;
+}
+
+Future<void> _simulateCloudFunctionVerification(String reportType, double lat, double lng) async {
+  try {
+    final db = FirebaseFirestore.instance;
+
+    // جلب البلاغات المعلقة من نفس النوع
+    final querySnapshot = await db.collection('community_reports')
+        .where('type', isEqualTo: reportType)
+        .where('status', isEqualTo: 'pending_verification')
+        .get();
+
+    List<DocumentSnapshot> nearbyReports = [];
+
+    // التحقق من المسافة (5 كم)
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final coords = data['coordinates'];
+      if (coords != null) {
+        final double rLat = coords['latitude'];
+        final double rLng = coords['longitude'];
+        final dist = _calculateDistance(lat, lng, rLat, rLng);
+        
+        if (dist <= 5.0) {
+          nearbyReports.add(doc);
+        }
+      }
+    }
+
+    // إذا وصلت البلاغات لـ 3، نقوم بالتوثيق التلقائي
+    if (nearbyReports.length >= 3) {
+      final batch = db.batch();
+
+      for (var doc in nearbyReports) {
+        // إخفاء البلاغات الفردية
+        batch.update(doc.reference, {'status': 'merged'});
+
+        // إضافة نقاط ثقة (اختياري)
+        final data = doc.data() as Map<String, dynamic>;
+        final userId = data['userId'];
+        if (userId != null && userId != 'anonymous') {
+          final userRef = db.collection('users').doc(userId);
+          batch.update(userRef, {'trustScore': FieldValue.increment(10)});
+        }
+      }
+
+      // إنشاء خطر عام موثق
+      final hazardId = 'auto_verified_${DateTime.now().millisecondsSinceEpoch}';
+      final hazardRef = db.collection('environmental_hazards').doc(hazardId);
+      
+      batch.set(hazardRef, {
+        'title': 'تنبيه مجتمعي موثق: $reportType',
+        'type': reportType,
+        'severity': 'medium', 
+        'location_name': 'موقع تم تحديده من قبل المجتمع',
+        'coordinates': {'latitude': lat, 'longitude': lng},
+        'timestamp': FieldValue.serverTimestamp(),
+        'source': 'بلاغ مجتمعي',
+      });
+
+      await batch.commit();
+      debugPrint("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام (محاكاة السيرفر).");
+    }
+  } catch (e) {
+    debugPrint("خطأ في المحاكاة: $e");
+  }
+}
+// ============================================================================
+
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -165,7 +247,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       } else {
         reportData['timestamp'] = FieldValue.serverTimestamp();
+        
+        // حفظ البلاغ في فايربيز
         await FirebaseFirestore.instance.collection('community_reports').add(reportData);
+        
+        // 👇 استدعاء دالة المحاكاة هنا ليتم الفحص والتوثيق فوراً
+        await _simulateCloudFunctionVerification(type, position.latitude, position.longitude);
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
