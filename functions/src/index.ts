@@ -156,6 +156,8 @@ export const verifyCommunityReport = functions.firestore
         if (newReport.status !== 'pending_verification') return null;
 
         const reporterId = newReport.userId || 'anonymous';
+        
+        // جلب جميع البلاغات المعلقة من نفس النوع
         const similarReports = await db.collection("community_reports")
             .where("type", "==", newReport.type)
             .where("status", "==", "pending_verification")
@@ -163,15 +165,25 @@ export const verifyCommunityReport = functions.firestore
 
         let relatedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
+        // التحقق من المسافة لجميع البلاغات
         similarReports.forEach((doc) => {
             const data = doc.data();
-            const dist = getDistanceFromLatLonInKm(newReport.coordinates.latitude, newReport.coordinates.longitude, data.coordinates.latitude, data.coordinates.longitude);
+            const dist = getDistanceFromLatLonInKm(
+                newReport.coordinates.latitude, 
+                newReport.coordinates.longitude, 
+                data.coordinates.latitude, 
+                data.coordinates.longitude
+            );
             if (dist <= 5.0) relatedDocs.push(doc);
         });
 
-        if (relatedDocs.length === 3) {
+        console.log(`تم استلام بلاغ جديد. العدد الحالي للبلاغات المتطابقة والقريبة: ${relatedDocs.length}`);
+
+        // استخدام >= 3 بدلاً من === 3 لتجنب مشاكل التزامن
+        if (relatedDocs.length >= 3) {
             const batch = db.batch();
             
+            // تغيير حالة جميع البلاغات إلى merged لكي تختفي ولا تتكرر
             relatedDocs.forEach(doc => {
                 batch.update(doc.ref, { status: 'merged' });
             });
@@ -194,6 +206,7 @@ export const verifyCommunityReport = functions.firestore
             });
             
             await batch.commit();
+            console.log("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام.");
         }
         return null;
     });
@@ -339,7 +352,7 @@ export const notifyChatMessage = functions.firestore
         // استخراج معرف المستخدم من مسار المستند
         const userId = context.params.chatId;
 
-        // 👈 التعديل هنا: التأكد من أن مرسل الرسالة ليس هو صاحب المحادثة نفسه
+        // التأكد من أن مرسل الرسالة ليس هو صاحب المحادثة نفسه
         if (messageData.senderId === userId) return null; 
 
         try {
