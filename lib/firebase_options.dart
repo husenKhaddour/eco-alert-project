@@ -1,16 +1,15 @@
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     return const FirebaseOptions(
-      apiKey: "AIzaSyCYMEc-4yZ47gBi_gB6Lgyg1gMpmZQN31Q",
-      authDomain: "firstproject-61e7d.firebaseapp.com",
-      projectId: "firstproject-61e7d",
-      storageBucket: "firstproject-61e7d.firebasestorage.app",
-      messagingSenderId: "507252097265", 
-      appId: "1:507252097265:android:85b1dcc874c7eba24ce950", 
-      measurementId: "G-SQFSFKL3CW",
+      apiKey: "AIzaSyA1SCOZ4fFlNVme4Tog6iGJLML92fkzL1A",
+      authDomain: "eco-alert-ff81f.firebaseapp.com",
+      projectId: "eco-alert-ff81f",
+      storageBucket: "eco-alert-ff81f.firebasestorage.app",
+      messagingSenderId: "831490656695", 
+      appId: "1:831490656695:android:f8e9e9cf8e90d103c84032", 
+      measurementId: "G-5N5HQ6BBZC",
     );
   }
 }
