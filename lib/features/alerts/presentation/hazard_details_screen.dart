@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:intl/intl.dart' as intl; 
-import 'package:flutter_map/flutter_map.dart'; // 👈 مكتبة الخريطة الداخلية
-import 'package:latlong2/latlong.dart'; // 👈 مكتبة الإحداثيات
+import 'package:flutter_map/flutter_map.dart'; 
+import 'package:latlong2/latlong.dart'; 
 import '../../chat/presentation/user_chat_screen.dart'; 
 
 class HazardDetailsScreen extends StatefulWidget {
@@ -29,11 +29,35 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
         'ضع قطعة قماش مبللة على أنفك.',
         'لا تستخدم المصعد، استخدم السلالم.'
       ];
-    } else if (type == 'تلوث' || type == 'تلوث غازي') {
+    } else if (type.contains('تلوث') || type == 'تلوث غازي' || type == 'رياح مغبرة') {
       return [
         'ابق في الداخل وأغلق النوافذ والأبواب.',
         'استخدم أجهزة تنقية الهواء إن وجدت.',
         'ارتدِ كمامة مخصصة عند الخروج للضرورة.'
+      ];
+    } else if (type == 'فيضان') {
+      return [
+        'انتقل فوراً إلى الأماكن المرتفعة.',
+        'تجنب المشي أو القيادة في مياه الفيضانات.',
+        'افصل التيار الكهربائي عن المنزل.'
+      ];
+    } else if (type == 'جائحة مرضية') {
+      return [
+        'التزم بالتباعد الاجتماعي وتجنب التجمعات.',
+        'اغسل يديك باستمرار بالماء والصابون.',
+        'اتبع الإرشادات الصادرة عن وزارة الصحة.'
+      ];
+    } else if (type.contains('جليد') || type == 'عاصفة جليدية') {
+      return [
+        'تجنب القيادة إلا للضرورة القصوى.',
+        'ارتد ملابس دافئة بطبقات متعددة.',
+        'تأكد من وجود وسائل تدفئة آمنة وتهوية جيدة.'
+      ];
+    } else if (type == 'إعصار' || type.contains('رياح') || type.contains('عواصف')) {
+      return [
+        'ابق في الداخل وابتعد عن النوافذ والأبواب الزجاجية.',
+        'قم بتثبيت الأشياء القابلة للتطاير خارج المنزل.',
+        'تابع النشرات الجوية باستمرار.'
       ];
     }
     return ['يرجى توخي الحذر والابتعاد عن منطقة الخطر. اتبع تعليمات الجهات الرسمية.'];
@@ -47,12 +71,11 @@ class _HazardDetailsScreenState extends State<HazardDetailsScreen> {
     final String location = widget.alert['location_name'] ?? 'موقع غير معروف';
     final String source = widget.alert['source'] ?? 'غير محدد';
     
-    // 👇 استخراج ومعالجة التاريخ والوقت
+    // استخراج ومعالجة التاريخ والوقت
     String timeString = 'غير متوفر';
     if (widget.alert['timestamp'] != null) {
       try {
         DateTime dt;
-        // التحقق مما إذا كان الوقت قادماً من Firebase مباشرة أو من التخزين المحلي
         if (widget.alert['timestamp'] is Timestamp) {
           dt = (widget.alert['timestamp'] as Timestamp).toDate();
         } else {
@@ -251,12 +274,12 @@ class HazardInternalMapScreen extends StatelessWidget {
       body: FlutterMap(
         options: MapOptions(
           initialCenter: location,
-          initialZoom: 14.0, // تقريب مناسب لرؤية المنطقة
+          initialZoom: 14.0, 
         ),
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.ecoalert.eco_alert', // لمنع حظر الخريطة
+            userAgentPackageName: 'com.ecoalert.eco_alert', 
           ),
           MarkerLayer(
             markers: [
