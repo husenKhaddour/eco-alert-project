@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' as intl;
-import 'package:geocoding/geocoding.dart'; // إضافة مكتبة تحويل الإحداثيات إلى عناوين
-import 'admin_chats_screen.dart'; // استدعاء شاشة محادثات الدعم الفني
+import 'package:geocoding/geocoding.dart'; 
+import 'admin_chats_screen.dart'; 
 
-// تم تحويل الشاشة إلى StatefulWidget لدعم ميزة التحديث
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
 
@@ -13,6 +12,73 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  
+  // دالة حقن البيانات التاريخية للعرض التقييمي (يتم استدعاؤها عبر الزر المخفي)
+  Future<void> _injectSyrianHistoricalData(BuildContext context) async {
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+    
+    final List<Map<String, dynamic>> historicalHazards = [
+      {
+        'title': 'فيضان نهر الفرات',
+        'type': 'فيضان',
+        'severity': 'high',
+        'location_name': 'دير الزور، الرقة',
+        'coordinates': {'latitude': 35.3333, 'longitude': 40.1500},
+        'timestamp': DateTime(2020, 5, 12),
+        'source': 'سجل تاريخي'
+      },
+      {
+        'title': 'عاصفة غبارية شديدة',
+        'type': 'رياح مغبرة',
+        'severity': 'medium',
+        'location_name': 'الحسكة',
+        'coordinates': {'latitude': 36.5000, 'longitude': 40.7500},
+        'timestamp': DateTime(2022, 4, 15),
+        'source': 'سجل تاريخي'
+      },
+      {
+        'title': 'زلزال مدمر',
+        'type': 'زلزال',
+        'severity': 'high',
+        'location_name': 'حلب، إدلب، اللاذقية',
+        'coordinates': {'latitude': 36.2021, 'longitude': 37.1343},
+        'timestamp': DateTime(2023, 2, 6),
+        'source': 'USGS'
+      },
+      {
+        'title': 'موجة صقيع وعاصفة ثلجية',
+        'type': 'عاصفة جليدية',
+        'severity': 'medium',
+        'location_name': 'جبل الشيخ، دمشق',
+        'coordinates': {'latitude': 33.3050, 'longitude': 35.8500},
+        'timestamp': DateTime(2021, 1, 20),
+        'source': 'الأرصاد الجوية'
+      },
+      {
+        'title': 'جائحة كوليرا (وهمي/تاريخي)',
+        'type': 'جائحة مرضية',
+        'severity': 'high',
+        'location_name': 'سوريا',
+        'coordinates': {'latitude': 35.0, 'longitude': 38.0},
+        'timestamp': DateTime(2024, 8, 1),
+        'source': 'منظمة الصحة'
+      }
+    ];
+
+    for (var hazard in historicalHazards) {
+      final docRef = db.collection('environmental_hazards').doc();
+      batch.set(docRef, hazard);
+    }
+    
+    await batch.commit();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حقن البيانات التاريخية السورية بنجاح ✅'), backgroundColor: Colors.green),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -24,14 +90,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           backgroundColor: Colors.indigo[900], 
           foregroundColor: Colors.white,
           actions: [
-            // 👇 إضافة زر التحديث الخاص بالأدمن
+            // زر مخفي (شفاف جزئياً) لحقن البيانات أثناء العرض
+            IconButton(
+              icon: const Icon(Icons.add_to_photos, color: Colors.white24),
+              tooltip: 'حقن بيانات تجريبية',
+              onPressed: () => _injectSyrianHistoricalData(context),
+            ),
+            // زر التحديث الخاص بالأدمن
             IconButton(
               icon: const Icon(Icons.refresh, color: Colors.white),
               tooltip: 'تحديث الإحصائيات والبيانات',
               onPressed: () {
-                // إعادة بناء الشاشة لتحديث جلب البيانات من فايربيز
                 setState(() {});
-                
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('تم تحديث بيانات لوحة التحكم بنجاح ✅'),
@@ -60,7 +130,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _OverviewTab(),        
             _PendingReportsTab(),  
             _UsersManagementTab(), 
-            AdminChatsScreen(),    // ربط شاشة محادثات الأدمن هنا
+            AdminChatsScreen(),    
           ],
         ),
       ),
@@ -91,7 +161,7 @@ class _OverviewTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // جلب كل البلاغات وتحليلها (Data Aggregation)
+          // جلب كل البلاغات وتحليلها
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('community_reports').snapshots(),
             builder: (context, snapshot) {
@@ -107,20 +177,24 @@ class _OverviewTab extends StatelessWidget {
               int earthquakes = 0;
               int pollution = 0;
               int floods = 0;
+              int stormsAndWinds = 0; // الفئات الجديدة: عواصف، أعاصير، رياح
+              int pandemics = 0;      // الفئة الجديدة: جائحة
 
               for (var doc in docs) {
                 final data = doc.data() as Map<String, dynamic>;
                 final status = data['status'];
-                final type = data['type'];
+                final type = data['type'] ?? '';
 
                 if (status == 'verified') verified++;
                 else if (status == 'pending_verification') pending++;
                 else if (status == 'rejected') rejected++;
 
                 if (type == 'حريق') fires++;
-                else if (type == 'زلزال') earthquakes++;
-                else if (type == 'تلوث' || type == 'تلوث غازي') pollution++;
+                else if (type == 'زلزال' || type == 'Earthquake') earthquakes++;
+                else if (type.contains('تلوث')) pollution++;
                 else if (type == 'فيضان') floods++;
+                else if (type.contains('رياح') || type.contains('عاصف') || type.contains('عواصف') || type == 'إعصار' || type == 'غبار' || type.contains('جليد')) stormsAndWinds++;
+                else if (type.contains('جائحة')) pandemics++;
               }
 
               return Column(
@@ -150,9 +224,13 @@ class _OverviewTab extends StatelessWidget {
                           const SizedBox(height: 12),
                           _buildProgressBar('الزلازل', earthquakes, total, Colors.brown),
                           const SizedBox(height: 12),
+                          _buildProgressBar('الفيضانات', floods, total, Colors.blueAccent),
+                          const SizedBox(height: 12),
                           _buildProgressBar('التلوث الغازي', pollution, total, Colors.grey),
                           const SizedBox(height: 12),
-                          _buildProgressBar('الفيضانات', floods, total, Colors.blueAccent),
+                          _buildProgressBar('الطقس المتطرف (عواصف/رياح/جليد)', stormsAndWinds, total, Colors.teal),
+                          const SizedBox(height: 12),
+                          _buildProgressBar('الجوائح والأمراض', pandemics, total, Colors.purple),
                         ],
                       ),
                     ),
