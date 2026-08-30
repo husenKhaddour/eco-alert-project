@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // إضافة مكتبة المصادقة للوصول للمستخدم الحالي
+import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:geocoding/geocoding.dart'; // تمت إضافة مكتبة تحويل العناوين لإحداثيات
 
 class MapScreen extends StatefulWidget {
   const MapScreen({Key? key}) : super(key: key);
@@ -12,16 +13,39 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // متغيرات التصفية (Filters)
-  String _selectedSeverity = 'الكل'; // 'الكل', 'high', 'medium', 'low'
-  String _selectedType = 'الكل';     // 'الكل', 'حريق', 'زلزال', 'فيضان', 'تلوث'
-  bool _showVerifiedOnly = true;     // إظهار الموثق فقط (إخفاء المعلق)
-  
-  // المتغيرات الجديدة الخاصة بفلتر "المواقع المفضلة"
-  bool _showNearFavoritesOnly = false; 
-  final Distance _distanceCalc = const Distance(); // أداة حساب المسافة الجغرافية
+  // 1. متغيرات الخريطة والبحث الجديدة
+  final MapController _mapController = MapController();
+  final TextEditingController _searchController = TextEditingController();
+  final LatLng _syriaCenter = const LatLng(34.8021, 38.9968); // إحداثيات سوريا كمركز افتراضي
 
-  // دالة للتحقق من خلو قائمة المواقع المفضلة وتنبيه المستخدم
+  // متغيرات التصفية (Filters)
+  String _selectedSeverity = 'الكل'; 
+  String _selectedType = 'الكل';     
+  bool _showVerifiedOnly = true;     
+  
+  // المتغيرات الخاصة بفلتر "المواقع المفضلة"
+  bool _showNearFavoritesOnly = false; 
+  final Distance _distanceCalc = const Distance();
+
+  // دالة البحث والانتقال في الخريطة
+  Future<void> _searchLocation(String query) async {
+    if (query.isEmpty) return;
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        final loc = locations.first;
+        _mapController.move(LatLng(loc.latitude, loc.longitude), 6.0);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم العثور على البلد. جرب اسماً آخر.'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // دالة للتحقق من خلو قائمة المواقع المفضلة
   void _checkFavoritesEmpty() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -41,16 +65,12 @@ class _MapScreenState extends State<MapScreen> {
 
   // دالة لجلب ودمج البيانات من فايربيز مع تطبيق الفلاتر
   Stream<List<Marker>> _getFilteredMarkers() {
-    // نجلب البيانات من مجموعة المخاطر الرسمية
     Stream<QuerySnapshot> hazardsStream = FirebaseFirestore.instance.collection('environmental_hazards').snapshots();
-    // نجلب البيانات من مجموعة بلاغات المجتمع
     Stream<QuerySnapshot> reportsStream = FirebaseFirestore.instance.collection('community_reports').snapshots();
 
-    // ندمج وندير البيانات
     return hazardsStream.asyncMap((hazardsSnapshot) async {
       final reportsSnapshot = await reportsStream.first;
       
-      // جلب المواقع المفضلة للمستخدم إذا كان الفلتر مفعلاً
       List<dynamic> savedLocations = [];
       final user = FirebaseAuth.instance.currentUser;
       if (_showNearFavoritesOnly && user != null) {
@@ -71,7 +91,7 @@ class _MapScreenState extends State<MapScreen> {
         
         final String type = data['type'] ?? '';
         final String severity = data['severity'] ?? 'low';
-        final String status = data['status'] ?? 'verified'; // الافتراضي للمخاطر الرسمية أنها موثقة
+        final String status = data['status'] ?? 'verified'; 
         final geo = data['coordinates'];
 
         if (geo == null || geo['latitude'] == null || geo['longitude'] == null) continue;
@@ -79,18 +99,12 @@ class _MapScreenState extends State<MapScreen> {
         final double lat = (geo['latitude'] as num).toDouble();
         final double lng = (geo['longitude'] as num).toDouble();
 
-        // 1. تطبيق فلتر التوثيق (Verified Only)
         if (_showVerifiedOnly && status == 'pending_verification') continue;
-        
-        // 2. تطبيق فلتر الشدة (Severity)
         if (_selectedSeverity != 'الكل' && severity != _selectedSeverity) continue;
-
-        // 3. تطبيق فلتر النوع (Type)
         if (_selectedType != 'الكل' && type != _selectedType && !(type == 'Earthquake' && _selectedType == 'زلزال')) continue;
 
-        // 4. تطبيق فلتر المواقع المفضلة (ضمن شعاع 50 كيلومتر)
         if (_showNearFavoritesOnly) {
-          if (savedLocations.isEmpty) continue; // إخفاء الكل إذا لم تكن هناك مفضلة
+          if (savedLocations.isEmpty) continue; 
           
           bool isNear = false;
           for (var loc in savedLocations) {
@@ -98,24 +112,30 @@ class _MapScreenState extends State<MapScreen> {
             double locLng = (loc['longitude'] as num).toDouble();
             
             double distInMeters = _distanceCalc.distance(LatLng(lat, lng), LatLng(locLat, locLng));
-            if (distInMeters <= 50000) { // 50 كيلومتر
+            if (distInMeters <= 50000) { 
               isNear = true;
               break;
             }
           }
-          if (!isNear) continue; // استبعاد الخطر إذا لم يكن قريباً من أي موقع
+          if (!isNear) continue; 
         }
 
-        // تحديد شكل وألوان الأيقونات بناءً على الشدة
         Color markerColor = Colors.green;
         IconData markerIcon = Icons.location_on;
         double iconSize = 30.0;
 
-        if (severity == 'high') { markerColor = Colors.red; markerIcon = Icons.warning; iconSize = 40.0; }
-        else if (severity == 'medium') { markerColor = Colors.orange; markerIcon = Icons.warning_amber; iconSize = 35.0; }
+        if (severity == 'high') { markerColor = Colors.red; iconSize = 40.0; }
+        else if (severity == 'medium') { markerColor = Colors.orange; iconSize = 35.0; }
 
+        // ربط الأيقونات بفئات الكوارث الجديدة
         if (type == 'حريق') markerIcon = Icons.local_fire_department;
-        if (type == 'زلزال' || type == 'Earthquake') markerIcon = Icons.waves;
+        else if (type == 'زلزال' || type == 'Earthquake') markerIcon = Icons.waves;
+        else if (type == 'فيضان') markerIcon = Icons.water_damage;
+        else if (type == 'تلوث غازي') markerIcon = Icons.masks;
+        else if (type.contains('رياح') || type == 'إعصار' || type == 'غبار') markerIcon = Icons.air;
+        else if (type.contains('جليد')) markerIcon = Icons.ac_unit;
+        else if (type.contains('عواصف')) markerIcon = Icons.thunderstorm;
+        else if (type == 'جائحة مرضية') markerIcon = Icons.coronavirus;
 
         markers.add(
           Marker(
@@ -135,7 +155,6 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
-  // نافذة منبثقة عند الضغط على العلامة في الخريطة
   void _showMarkerDetails(BuildContext context, Map<String, dynamic> data) {
     showModalBottomSheet(
       context: context,
@@ -183,9 +202,10 @@ class _MapScreenState extends State<MapScreen> {
               List<Marker> markers = snapshot.data ?? [];
               
               return FlutterMap(
-                options: const MapOptions(
-                  initialCenter: LatLng(24.0, 45.0), // إحداثيات افتراضية مركزية
-                  initialZoom: 5.0,
+                mapController: _mapController, // ربط متحكم الخريطة
+                options: MapOptions(
+                  initialCenter: _syriaCenter, // المركز الافتراضي على سوريا
+                  initialZoom: 6.0,
                 ),
                 children: [
                   TileLayer(
@@ -198,9 +218,39 @@ class _MapScreenState extends State<MapScreen> {
             },
           ),
 
-          // 2. طبقة شريط التصفية العلوي (Floating Filter Bar)
+          // 2. شريط البحث العلوي الجديد للبلدان
           Positioned(
-            top: 10,
+            top: 10, left: 15, right: 15,
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'ابحث عن بلد (مثال: مصر، تركيا)...',
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: _searchLocation,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.indigo),
+                      onPressed: () => _searchLocation(_searchController.text),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 3. طبقة شريط التصفية (تم إزاحتها للأسفل لتفادي شريط البحث)
+          Positioned(
+            top: 80,
             left: 10,
             right: 10,
             child: Container(
@@ -214,7 +264,6 @@ class _MapScreenState extends State<MapScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 children: [
-                  // فلتر القرب من المواقع المفضلة الجديد
                   FilterChip(
                     label: const Text('قريب من مفضلتي 📍', style: TextStyle(fontWeight: FontWeight.bold)),
                     selected: _showNearFavoritesOnly,
@@ -222,12 +271,11 @@ class _MapScreenState extends State<MapScreen> {
                     onSelected: (bool value) {
                       setState(() => _showNearFavoritesOnly = value);
                       if (value) {
-                        _checkFavoritesEmpty(); // التحقق التلقائي عند تفعيل الفلتر
+                        _checkFavoritesEmpty(); 
                       }
                     },
                   ),
                   const SizedBox(width: 8),
-                  // فلتر البلاغات الموثقة
                   FilterChip(
                     label: const Text('موثقة فقط ✅'),
                     selected: _showVerifiedOnly,
@@ -237,7 +285,6 @@ class _MapScreenState extends State<MapScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  // فلتر الشدة (خطر عالي)
                   ChoiceChip(
                     label: const Text('خطر عالي 🔴'),
                     selected: _selectedSeverity == 'high',
@@ -247,7 +294,6 @@ class _MapScreenState extends State<MapScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  // فلتر الشدة (متوسط)
                   ChoiceChip(
                     label: const Text('متوسط 🟠'),
                     selected: _selectedSeverity == 'medium',
@@ -257,7 +303,6 @@ class _MapScreenState extends State<MapScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  // فلتر النوع (زلازل)
                   ChoiceChip(
                     label: const Text('زلازل 🌊'),
                     selected: _selectedType == 'زلزال',
@@ -267,13 +312,22 @@ class _MapScreenState extends State<MapScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  // فلتر النوع (حرائق)
                   ChoiceChip(
                     label: const Text('حرائق 🔥'),
                     selected: _selectedType == 'حريق',
                     selectedColor: Colors.deepOrange[200],
                     onSelected: (bool selected) {
                       setState(() => _selectedType = selected ? 'حريق' : 'الكل');
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // فلتر جديد للفيضانات
+                  ChoiceChip(
+                    label: const Text('فيضانات 💧'),
+                    selected: _selectedType == 'فيضان',
+                    selectedColor: Colors.cyan[200],
+                    onSelected: (bool selected) {
+                      setState(() => _selectedType = selected ? 'فيضان' : 'الكل');
                     },
                   ),
                 ],
