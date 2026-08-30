@@ -1,4 +1,4 @@
-import 'dart:math'; 
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,19 +9,18 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/services/hazards_sync_service.dart';
 import '../../hazards_map/presentation/map_screen.dart';
-
 import 'hazard_details_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
-import '../../admin/presentation/admin_dashboard_screen.dart'; 
+import '../../admin/presentation/admin_dashboard_screen.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../chat/presentation/user_chat_screen.dart';
-import 'notifications_screen.dart'; 
+import 'notifications_screen.dart';
 
 // ============================================================================
 // 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback)
 // ============================================================================
 double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-  const R = 6371.0; 
+  const R = 6371.0;
   final dLat = (lat2 - lat1) * (pi / 180.0);
   final dLon = (lon2 - lon1) * (pi / 180.0);
   final a = sin(dLat / 2) * sin(dLat / 2) +
@@ -66,7 +65,7 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
         // إخفاء البلاغات الفردية
         batch.update(doc.reference, {'status': 'merged'});
 
-        // إضافة نقاط ثقة (اختياري)
+        // إضافة نقاط ثقة
         final data = doc.data() as Map<String, dynamic>;
         final userId = data['userId'];
         if (userId != null && userId != 'anonymous') {
@@ -98,7 +97,6 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
 }
 // ============================================================================
 
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
@@ -121,7 +119,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _initHiveAndLoadData();
     _checkUserRole();
     _syncUserLocationAndToken(); 
+    _listenForGlobalHazards(); // تفعيل مراقب الكوارث للإشعارات داخل التطبيق
   }
+
+  // ============================================================================
+  // مراقب الإشعارات الشاملة (In-App Notifications)
+  // ============================================================================
+  void _listenForGlobalHazards() {
+    FirebaseFirestore.instance
+        .collection('environmental_hazards')
+        .where('timestamp', isGreaterThan: DateTime.now())
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final data = change.doc.data();
+          if (data != null) {
+            _showInAppNotification(data['title'] ?? 'خطر جديد', data['location_name'] ?? 'موقع غير محدد');
+          }
+        }
+      }
+    });
+  }
+
+  void _showInAppNotification(String title, String location) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 80, left: 20, right: 20),
+        backgroundColor: Colors.red[800],
+        duration: const Duration(seconds: 6),
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 30),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('إشعار طوارئ جديد!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                  Text('$title في $location', style: const TextStyle(fontSize: 14, color: Colors.white)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // ============================================================================
 
   Future<void> _syncUserLocationAndToken() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -248,10 +296,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else {
         reportData['timestamp'] = FieldValue.serverTimestamp();
         
-        // حفظ البلاغ في فايربيز
         await FirebaseFirestore.instance.collection('community_reports').add(reportData);
-        
-        // 👇 استدعاء دالة المحاكاة هنا ليتم الفحص والتوثيق فوراً
         await _simulateCloudFunctionVerification(type, position.latitude, position.longitude);
         
         if (mounted) {
@@ -297,7 +342,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     items: const [
                       DropdownMenuItem(value: 'حريق', child: Text('🔥 حريق')),
                       DropdownMenuItem(value: 'فيضان', child: Text('🌊 فيضان')),
-                      DropdownMenuItem(value: 'تلوث', child: Text('💨 تلوث غازي')),
+                      DropdownMenuItem(value: 'زلزال', child: Text('🫨 زلزال')),
+                      DropdownMenuItem(value: 'تلوث غازي', child: Text('💨 تلوث غازي')),
+                      DropdownMenuItem(value: 'رياح شديدة', child: Text('💨 رياح شديدة')),
+                      DropdownMenuItem(value: 'عاصفة جليدية', child: Text('❄️ عاصفة جليدية')),
+                      DropdownMenuItem(value: 'إعصار', child: Text('🌪️ إعصار')),
+                      DropdownMenuItem(value: 'رياح مغبرة', child: Text('🌫️ رياح مغبرة')),
+                      DropdownMenuItem(value: 'عواصف رعدية', child: Text('⛈️ عواصف رعدية')),
+                      DropdownMenuItem(value: 'جائحة مرضية', child: Text('🦠 جائحة مرضية')),
                     ],
                     onChanged: (val) => setDialogState(() => selectedType = val!),
                   ),
@@ -361,8 +413,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UserChatScreen())),
             ),
 
-            IconButton(icon: const Icon(Icons.refresh, color: Colors.white), tooltip: 'تحديث الكوارث', onPressed: _syncOpenData),
-            
+          IconButton(icon: const Icon(Icons.refresh, color: Colors.white), tooltip: 'تحديث الكوارث', onPressed: _syncOpenData),
+          
           if (!_isAdmin)
             IconButton(
               icon: const Icon(Icons.notifications_active, color: Colors.white), 
@@ -421,7 +473,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
-              children: ['الكل', 'الزلازل', 'الحرائق', 'خطر عالي'].map((filter) {
+              children: [
+                'الكل', 'سوريا', 'الزلازل', 'الحرائق', 'الفيضانات', 'رياح', 'جليد', 'إعصار', 'غبار', 'عواصف', 'جائحة'
+              ].map((filter) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 8.0),
                   child: ChoiceChip(
@@ -446,11 +500,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   final alert = box.getAt(i) as Map<dynamic, dynamic>;
                   final type = alert['type'] ?? '';
                   final severity = alert['severity'] ?? '';
+                  final location = alert['location_name'] ?? '';
+
+                  bool isSyria = location.contains('سوريا') || location.contains('حلب') || 
+                                 location.contains('دمشق') || location.contains('دير الزور') || 
+                                 location.contains('الحسكة') || location.contains('الرقة') || 
+                                 location.contains('إدلب') || location.contains('اللاذقية') || 
+                                 location.contains('حمص') || location.contains('حماة');
                   
                   if (_selectedFilter == 'الكل') filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'سوريا' && isSyria) filteredAlerts.add(alert);
                   else if (_selectedFilter == 'الزلازل' && (type == 'Earthquake' || type == 'زلزال')) filteredAlerts.add(alert);
                   else if (_selectedFilter == 'الحرائق' && type == 'حريق') filteredAlerts.add(alert);
-                  else if (_selectedFilter == 'خطر عالي' && severity == 'high') filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'الفيضانات' && type == 'فيضان') filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'رياح' && type.contains('رياح')) filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'جليد' && type.contains('جليد')) filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'إعصار' && type == 'إعصار') filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'غبار' && type == 'رياح مغبرة') filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'عواصف' && type.contains('عواصف')) filteredAlerts.add(alert);
+                  else if (_selectedFilter == 'جائحة' && type == 'جائحة مرضية') filteredAlerts.add(alert);
                 }
 
                 if (filteredAlerts.isEmpty) return Center(child: Text('لا توجد تنبيهات تطابق الفلتر: $_selectedFilter'));
@@ -468,10 +536,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     
                     Color severityColor = Colors.green;
                     IconData hazardIcon = Icons.info;
-                    if (severity == 'high') { severityColor = Colors.red; hazardIcon = Icons.warning; }
-                    else if (severity == 'medium') { severityColor = Colors.orange; hazardIcon = Icons.warning_amber; }
-                    if (type == 'Earthquake') hazardIcon = Icons.waves;
-                    if (type == 'حريق') hazardIcon = Icons.local_fire_department;
+                    
+                    if (severity == 'high') { severityColor = Colors.red; }
+                    else if (severity == 'medium') { severityColor = Colors.orange; }
+                    
+                    if (type == 'Earthquake' || type == 'زلزال') hazardIcon = Icons.waves;
+                    else if (type == 'حريق') hazardIcon = Icons.local_fire_department;
+                    else if (type == 'فيضان') hazardIcon = Icons.water_damage;
+                    else if (type == 'تلوث غازي') hazardIcon = Icons.masks;
+                    else if (type.contains('رياح') || type == 'إعصار' || type == 'غبار') hazardIcon = Icons.air;
+                    else if (type.contains('جليد')) hazardIcon = Icons.ac_unit;
+                    else if (type.contains('عواصف')) hazardIcon = Icons.thunderstorm;
+                    else if (type == 'جائحة مرضية') hazardIcon = Icons.coronavirus;
                     
                     return Card(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
