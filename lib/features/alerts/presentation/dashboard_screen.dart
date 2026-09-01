@@ -17,7 +17,7 @@ import '../../chat/presentation/user_chat_screen.dart';
 import 'notifications_screen.dart';
 
 // ============================================================================
-// 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback) داخل التطبيق
+// 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback)
 // ============================================================================
 double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
   const R = 6371.0;
@@ -57,15 +57,15 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
       }
     }
 
-    // إذا وصلت البلاغات لـ 3 أو أكثر، نقوم بالتوثيق التلقائي محلياً عبر التطبيق
+    // إذا وصلت البلاغات لـ 3، نقوم بالتوثيق التلقائي
     if (nearbyReports.length >= 3) {
       final batch = db.batch();
 
       for (var doc in nearbyReports) {
-        // إخفاء البلاغات الفردية بتغيير حالتها إلى merged
+        // إخفاء البلاغات الفردية
         batch.update(doc.reference, {'status': 'merged'});
 
-        // إضافة نقاط ثقة للمستخدم صاحب البلاغ
+        // إضافة نقاط ثقة
         final data = doc.data() as Map<String, dynamic>;
         final userId = data['userId'];
         if (userId != null && userId != 'anonymous') {
@@ -74,7 +74,7 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
         }
       }
 
-      // إنشاء خطر عام موثق في مجموعة environmental_hazards
+      // إنشاء خطر عام موثق
       final hazardId = 'auto_verified_${DateTime.now().millisecondsSinceEpoch}';
       final hazardRef = db.collection('environmental_hazards').doc(hazardId);
       
@@ -89,10 +89,10 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
       });
 
       await batch.commit();
-      debugPrint("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام محلياً.");
+      debugPrint("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام (محاكاة السيرفر).");
     }
   } catch (e) {
-    debugPrint("خطأ في المحاكاة المحلية: $e");
+    debugPrint("خطأ في المحاكاة: $e");
   }
 }
 // ============================================================================
@@ -119,11 +119,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _initHiveAndLoadData();
     _checkUserRole();
     _syncUserLocationAndToken(); 
-    _listenForGlobalHazards(); // تفعيل مراقب الكوارث للإشعارات الفورية داخل التطبيق
+    _listenForGlobalHazards(); // تفعيل مراقب الكوارث للإشعارات داخل التطبيق
   }
 
   // ============================================================================
-  // مراقب الإشعارات الشاملة (In-App Notifications) كبديل لغياب السيرفر
+  // مراقب الإشعارات الشاملة (In-App Notifications) مع الحفظ في Hive
   // ============================================================================
   void _listenForGlobalHazards() {
     FirebaseFirestore.instance
@@ -144,6 +144,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showInAppNotification(String title, String location) {
     if (!mounted) return;
+
+    // حفظ الإشعار محلياً في صندوق Hive ليظهر في سجل الإشعارات
+    try {
+      final notifBox = Hive.box('notifications_box');
+      notifBox.add({
+        'title': 'إشعار طوارئ جديد!',
+        'body': '$title في $location',
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint("خطأ في حفظ الإشعار محلياً: $e");
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -296,10 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else {
         reportData['timestamp'] = FieldValue.serverTimestamp();
         
-        // حفظ البلاغ في فايربيز
         await FirebaseFirestore.instance.collection('community_reports').add(reportData);
-        
-        // استدعاء دالة المحاكاة المحلية فوراً للتحقق والتوثيق التلقائي
         await _simulateCloudFunctionVerification(type, position.latitude, position.longitude);
         
         if (mounted) {
