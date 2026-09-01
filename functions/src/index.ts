@@ -214,6 +214,7 @@ export const sendHazardNotification = functions.firestore
     .document("environmental_hazards/{hazardId}")
     .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
         const newHazard = snap.data();
+        const hazardId = context.params.hazardId; // استخراج معرف الخطر لتضمينه في البيانات
         
         if (newHazard.severity === "low") return null;
 
@@ -267,16 +268,22 @@ export const sendHazardNotification = functions.firestore
             });
 
             if (tokensToSend.length > 0) {
+                // 👇 تضمين كائن data للتوجيه لتفاصيل الخطر
                 const payload = {
                     notification: { 
                         title: "⚠️ تنبيه بيئي في منطقتك (Eco Alert)", 
                         body: `${newHazard.title} - اقترب الخطر من موقعك أو أحد مواقعك المفضلة.` 
+                    },
+                    data: {
+                        type: "hazard",
+                        hazardId: hazardId
                     }
                 };
 
                 const response = await admin.messaging().sendMulticast({
                     tokens: tokensToSend,
-                    notification: payload.notification
+                    notification: payload.notification,
+                    data: payload.data
                 });
                 
                 console.log(`تم إرسال الإشعار بنجاح لـ ${response.successCount} مستخدم في نطاق الخطر.`);
@@ -302,6 +309,7 @@ export const notifyReportStatusChange = functions.firestore
         if (newValue.status === previousValue.status) return null;
 
         const userId = newValue.userId;
+        const reportId = context.params.reportId;
         if (!userId || userId === 'anonymous') return null;
 
         let title = "";
@@ -324,9 +332,14 @@ export const notifyReportStatusChange = functions.firestore
             const fcmToken = userLocDoc.data()?.fcmToken;
 
             if (fcmToken) {
+                // 👇 تضمين كائن data للتوجيه لقائمة البلاغات (أو الإشعارات)
                 await admin.messaging().send({
                     token: fcmToken,
-                    notification: { title, body }
+                    notification: { title, body },
+                    data: {
+                        type: "report_status",
+                        reportId: reportId
+                    }
                 });
                 console.log(`تم إرسال إشعار حالة البلاغ للمستخدم: ${userId}`);
             }
@@ -356,11 +369,16 @@ export const notifyChatMessage = functions.firestore
             const fcmToken = userLocDoc.data()?.fcmToken;
 
             if (fcmToken) {
+                // 👇 تضمين كائن data للتوجيه لشاشة المحادثة
                 await admin.messaging().send({
                     token: fcmToken,
                     notification: {
                         title: "💬 رسالة جديدة من الدعم الفني",
                         body: messageData.text || "لديك تحديث جديد بخصوص استفسارك."
+                    },
+                    data: {
+                        type: "chat",
+                        chatId: userId
                     }
                 });
                 console.log(`تم إرسال إشعار الرسالة للمستخدم: ${userId}`);
