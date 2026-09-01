@@ -157,7 +157,6 @@ export const verifyCommunityReport = functions.firestore
 
         const reporterId = newReport.userId || 'anonymous';
         
-        // جلب جميع البلاغات المعلقة من نفس النوع
         const similarReports = await db.collection("community_reports")
             .where("type", "==", newReport.type)
             .where("status", "==", "pending_verification")
@@ -165,7 +164,6 @@ export const verifyCommunityReport = functions.firestore
 
         let relatedDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
-        // التحقق من المسافة لجميع البلاغات
         similarReports.forEach((doc) => {
             const data = doc.data();
             const dist = getDistanceFromLatLonInKm(
@@ -179,11 +177,9 @@ export const verifyCommunityReport = functions.firestore
 
         console.log(`تم استلام بلاغ جديد. العدد الحالي للبلاغات المتطابقة والقريبة: ${relatedDocs.length}`);
 
-        // استخدام >= 3 بدلاً من === 3 لتجنب مشاكل التزامن
         if (relatedDocs.length >= 3) {
             const batch = db.batch();
             
-            // تغيير حالة جميع البلاغات إلى merged لكي تختفي ولا تتكرر
             relatedDocs.forEach(doc => {
                 batch.update(doc.ref, { status: 'merged' });
             });
@@ -349,10 +345,8 @@ export const notifyChatMessage = functions.firestore
     .onCreate(async (snap, context) => {
         const messageData = snap.data();
         
-        // استخراج معرف المستخدم من مسار المستند
         const userId = context.params.chatId;
 
-        // التأكد من أن مرسل الرسالة ليس هو صاحب المحادثة نفسه
         if (messageData.senderId === userId) return null; 
 
         try {
