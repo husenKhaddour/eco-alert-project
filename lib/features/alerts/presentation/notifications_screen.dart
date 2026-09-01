@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart' as intl;
+import 'hazard_details_screen.dart'; // استدعاء شاشة التفاصيل
+import '../../chat/presentation/user_chat_screen.dart'; // استدعاء شاشة المحادثة
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -50,6 +52,10 @@ class NotificationsScreen extends StatelessWidget {
               final String title = notif['title'] ?? 'تنبيه جديد';
               final String body = notif['body'] ?? '';
               final String timeString = notif['timestamp'] ?? '';
+              
+              // استخراج نوع الإشعار والبيانات المرفقة للتوجيه
+              final String type = notif['type'] ?? 'unknown'; 
+              final dynamic payload = notif['payload']; 
 
               String displayTime = '';
               if (timeString.isNotEmpty) {
@@ -67,9 +73,9 @@ class NotificationsScreen extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(12),
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.orangeAccent,
-                    child: Icon(Icons.notifications_active, color: Colors.white),
+                  leading: CircleAvatar(
+                    backgroundColor: _getIconColor(type),
+                    child: Icon(_getIconData(type), color: Colors.white),
                   ),
                   title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   subtitle: Column(
@@ -81,6 +87,32 @@ class NotificationsScreen extends StatelessWidget {
                       Text(displayTime, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ],
                   ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                  
+                  // التوجيه عند الضغط على الإشعار
+                  onTap: () {
+                    if (type == 'hazard' && payload != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HazardDetailsScreen(
+                            alert: Map<String, dynamic>.from(payload),
+                          ),
+                        ),
+                      );
+                    } else if (type == 'chat') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UserChatScreen(),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('هذا الإشعار للعلم فقط.')),
+                      );
+                    }
+                  },
                 ),
               );
             },
@@ -88,6 +120,21 @@ class NotificationsScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  // دوال مساعدة لتحديد شكل ولون الأيقونة بناءً على نوع الإشعار
+  IconData _getIconData(String type) {
+    if (type == 'hazard') return Icons.warning_amber_rounded;
+    if (type == 'chat') return Icons.chat_bubble_outline;
+    if (type == 'report_status') return Icons.fact_check;
+    return Icons.notifications_active;
+  }
+
+  Color _getIconColor(String type) {
+    if (type == 'hazard') return Colors.redAccent;
+    if (type == 'chat') return Colors.indigo;
+    if (type == 'report_status') return Colors.teal;
+    return Colors.orangeAccent;
   }
 
   // نافذة تأكيد قبل مسح الإشعارات
