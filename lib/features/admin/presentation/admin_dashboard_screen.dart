@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart' as intl;
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:intl/intl.dart' as intl; 
 import 'package:geocoding/geocoding.dart'; 
 import 'admin_chats_screen.dart'; 
 
@@ -19,6 +19,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final batch = db.batch();
     
     final List<Map<String, dynamic>> historicalHazards = [
+      // --- الأحداث السابقة ---
       {
         'title': 'فيضان نهر الفرات',
         'type': 'فيضان',
@@ -56,13 +57,113 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         'source': 'الأرصاد الجوية'
       },
       {
-        'title': 'جائحة كوليرا (وهمي/تاريخي)',
+        'title': 'جائحة كوليرا (تاريخي)',
         'type': 'جائحة مرضية',
         'severity': 'high',
-        'location_name': 'سوريا',
-        'coordinates': {'latitude': 35.0, 'longitude': 38.0},
-        'timestamp': DateTime(2024, 8, 1),
+        'location_name': 'شمال غرب سوريا',
+        'coordinates': {'latitude': 35.9300, 'longitude': 36.6300},
+        'timestamp': DateTime(2022, 8, 10),
         'source': 'منظمة الصحة'
+      },
+      // --- الأحداث الجديدة المكثفة ---
+      {
+        'title': 'حرائق غابات واسعة',
+        'type': 'حريق',
+        'severity': 'high',
+        'location_name': 'اللاذقية، ريف طرطوس',
+        'coordinates': {'latitude': 35.5200, 'longitude': 35.7800},
+        'timestamp': DateTime(2020, 10, 9),
+        'source': 'الدفاع المدني'
+      },
+      {
+        'title': 'تلوث غازي وانبعاثات',
+        'type': 'تلوث غازي',
+        'severity': 'medium',
+        'location_name': 'حمص',
+        'coordinates': {'latitude': 34.7324, 'longitude': 36.7137},
+        'timestamp': DateTime(2023, 8, 14),
+        'source': 'وزارة البيئة'
+      },
+      {
+        'title': 'عاصفة رعدية وفيضانات محلية',
+        'type': 'عواصف رعدية',
+        'severity': 'medium',
+        'location_name': 'دمشق وريفها',
+        'coordinates': {'latitude': 33.5138, 'longitude': 36.2765},
+        'timestamp': DateTime(2023, 11, 20),
+        'source': 'الأرصاد الجوية'
+      },
+      {
+        'title': 'رياح شديدة أدت لاقتلاع أشجار',
+        'type': 'رياح شديدة',
+        'severity': 'low',
+        'location_name': 'درعا',
+        'coordinates': {'latitude': 32.6200, 'longitude': 36.1000},
+        'timestamp': DateTime(2024, 2, 5),
+        'source': 'تقارير محلية'
+      },
+      {
+        'title': 'عاصفة جليدية وتراكم ثلوج',
+        'type': 'عاصفة جليدية',
+        'severity': 'high',
+        'location_name': 'السويداء، ظهر الجبل',
+        'coordinates': {'latitude': 32.7100, 'longitude': 36.5600},
+        'timestamp': DateTime(2022, 1, 26),
+        'source': 'الأرصاد الجوية'
+      },
+      {
+        'title': 'تنين بحري (إعصار صغير)',
+        'type': 'إعصار',
+        'severity': 'medium',
+        'location_name': 'طرطوس، الساحل',
+        'coordinates': {'latitude': 34.8800, 'longitude': 35.8800},
+        'timestamp': DateTime(2023, 12, 11),
+        'source': 'الأرصاد الجوية'
+      },
+      {
+        'title': 'فيضان نهر العاصي',
+        'type': 'فيضان',
+        'severity': 'high',
+        'location_name': 'حماة، الغاب',
+        'coordinates': {'latitude': 35.1318, 'longitude': 36.7534},
+        'timestamp': DateTime(2019, 3, 30),
+        'source': 'سجل تاريخي'
+      },
+      {
+        'title': 'هزة أرضية ارتدادية',
+        'type': 'زلزال',
+        'severity': 'medium',
+        'location_name': 'حلب، ريف إدلب',
+        'coordinates': {'latitude': 36.1000, 'longitude': 36.8000},
+        'timestamp': DateTime(2023, 2, 20),
+        'source': 'USGS'
+      },
+      {
+        'title': 'تفشي اللشمانيا (حبة حلب)',
+        'type': 'جائحة مرضية',
+        'severity': 'medium',
+        'location_name': 'حلب، الرقة',
+        'coordinates': {'latitude': 36.2000, 'longitude': 37.1300},
+        'timestamp': DateTime(2021, 6, 15),
+        'source': 'منظمة الصحة'
+      },
+      {
+        'title': 'عاصفة غبارية كثيفة',
+        'type': 'رياح مغبرة',
+        'severity': 'high',
+        'location_name': 'تدمر، البادية السورية',
+        'coordinates': {'latitude': 34.5600, 'longitude': 38.2600},
+        'timestamp': DateTime(2024, 4, 10),
+        'source': 'الأرصاد الجوية'
+      },
+      {
+        'title': 'حريق مستودعات صناعية',
+        'type': 'حريق',
+        'severity': 'high',
+        'location_name': 'ريف دمشق، عدرا',
+        'coordinates': {'latitude': 33.6167, 'longitude': 36.5000},
+        'timestamp': DateTime(2024, 1, 15),
+        'source': 'فوج الإطفاء'
       }
     ];
 
@@ -74,7 +175,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await batch.commit();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حقن البيانات التاريخية السورية بنجاح ✅'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('تم حقن 16 حدثاً تاريخياً موزعاً على خارطة سوريا بنجاح ✅'), backgroundColor: Colors.green),
       );
     }
   }
