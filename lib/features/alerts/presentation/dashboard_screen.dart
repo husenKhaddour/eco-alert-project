@@ -236,7 +236,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _syncFromFirestoreToLocal() async {
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('environmental_hazards').orderBy('timestamp', descending: true).limit(20).get();
+      // 👇 تم رفع الحد إلى 200 لضمان ظهور الكوارث التاريخية السورية
+      final snapshot = await FirebaseFirestore.instance.collection('environmental_hazards').orderBy('timestamp', descending: true).limit(200).get();
       await _alertsBox.clear();
       for (var doc in snapshot.docs) {
         final data = doc.data();
