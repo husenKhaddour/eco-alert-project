@@ -17,7 +17,7 @@ import '../../chat/presentation/user_chat_screen.dart';
 import 'notifications_screen.dart';
 
 // ============================================================================
-// 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback)
+// 1. دوال محاكاة السيرفر للتوثيق التلقائي (Demo Mode Fallback) داخل التطبيق
 // ============================================================================
 double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
   const R = 6371.0;
@@ -57,15 +57,15 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
       }
     }
 
-    // إذا وصلت البلاغات لـ 3، نقوم بالتوثيق التلقائي
+    // إذا وصلت البلاغات لـ 3 أو أكثر، نقوم بالتوثيق التلقائي محلياً عبر التطبيق
     if (nearbyReports.length >= 3) {
       final batch = db.batch();
 
       for (var doc in nearbyReports) {
-        // إخفاء البلاغات الفردية
+        // إخفاء البلاغات الفردية بتغيير حالتها إلى merged
         batch.update(doc.reference, {'status': 'merged'});
 
-        // إضافة نقاط ثقة
+        // إضافة نقاط ثقة للمستخدم صاحب البلاغ
         final data = doc.data() as Map<String, dynamic>;
         final userId = data['userId'];
         if (userId != null && userId != 'anonymous') {
@@ -74,7 +74,7 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
         }
       }
 
-      // إنشاء خطر عام موثق
+      // إنشاء خطر عام موثق في مجموعة environmental_hazards
       final hazardId = 'auto_verified_${DateTime.now().millisecondsSinceEpoch}';
       final hazardRef = db.collection('environmental_hazards').doc(hazardId);
       
@@ -89,10 +89,10 @@ Future<void> _simulateCloudFunctionVerification(String reportType, double lat, d
       });
 
       await batch.commit();
-      debugPrint("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام (محاكاة السيرفر).");
+      debugPrint("نجاح: تم توثيق البلاغات وتحويلها إلى تنبيه عام محلياً.");
     }
   } catch (e) {
-    debugPrint("خطأ في المحاكاة: $e");
+    debugPrint("خطأ في المحاكاة المحلية: $e");
   }
 }
 // ============================================================================
@@ -119,11 +119,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _initHiveAndLoadData();
     _checkUserRole();
     _syncUserLocationAndToken(); 
-    _listenForGlobalHazards(); // تفعيل مراقب الكوارث للإشعارات داخل التطبيق
+    _listenForGlobalHazards(); // تفعيل مراقب الكوارث للإشعارات الفورية داخل التطبيق
   }
 
   // ============================================================================
-  // مراقب الإشعارات الشاملة (In-App Notifications)
+  // مراقب الإشعارات الشاملة (In-App Notifications) كبديل لغياب السيرفر
   // ============================================================================
   void _listenForGlobalHazards() {
     FirebaseFirestore.instance
@@ -296,7 +296,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else {
         reportData['timestamp'] = FieldValue.serverTimestamp();
         
+        // حفظ البلاغ في فايربيز
         await FirebaseFirestore.instance.collection('community_reports').add(reportData);
+        
+        // استدعاء دالة المحاكاة المحلية فوراً للتحقق والتوثيق التلقائي
         await _simulateCloudFunctionVerification(type, position.latitude, position.longitude);
         
         if (mounted) {
